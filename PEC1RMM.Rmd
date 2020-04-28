@@ -1,0 +1,35 @@
+---
+title: "Untitled"
+author: "Amelia Martínez Sequera"
+date: "Abril 2020"
+output: html_document
+---
+
+```{r setup, include=T}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/R/PEC1_RMM")
+library(readr)
+alcohol <- read_table2("alcohol.txt", col_names = c("Metabol","Gastric", "Sex","Alcohol"))
+View(alcohol)
+summary(alcohol)
+```
+
+## Problema 1
+```{r}
+alcohol$Male<-factor(alcohol$Sex, levels = c("Male", "Female"), labels = c("1","0"))
+alcohol$Female<- factor(alcohol$Sex, levels = c("Female", "Male"), labels = c("1","0"))
+alcohol$Alcoholic <- factor(alcohol$Alcohol, levels = c("Alcoholic","Non-alcoholic"), labels = c("1","0"))
+
+```
+# Diferencias de Metabol entre hombres y mujeres
+```{r}
+library(faraway)
+M1<- lm(Metabol~Gastric+Female, data=alcohol)
+M2<- lm(Metabol~Gastric+Male, data=alcohol)
+M3<- lm(Metabol~Gastric+Male+Female, data=alcohol)
+M4<- lm(Metabol~0+Gastric+Male+Female, data=alcohol)
+M1$coefficients;M2$coefficients
+1.946646-0.3292012
+```
+
+
