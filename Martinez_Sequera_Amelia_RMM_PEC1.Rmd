@@ -1,0 +1,371 @@
+---
+title: "Martinez_Sequera_Amelia_RMM_PEC1"
+author: "Amelia Martínez Sequera"
+date: "Abril 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=T}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/R/PEC1_RMM")
+library(readr)
+library(dplyr)
+alcohol <- read_table2("alcohol.txt", col_names = c("Metabol", "Gastric", "Sex", "Alcohol"))
+View(alcohol)
+summary(alcohol)
+```
+
+## Problema 1
+```{r}
+alcohol$Male<- factor(alcohol$Sex, levels = c("Male", "Female"), labels = c("1","0"))
+alcohol$Female<- factor(alcohol$Sex, levels = c("Female", "Male"), labels = c("1","0"))
+alcohol$Alcoholic <- factor(alcohol$Alcohol, levels = c("Alcoholic","Non-alcoholic"), labels = c("1","0"))
+```
+# Diferencias de Metabol entre hombres y mujeres
+```{r}
+library(faraway)
+M1<- lm(Metabol~Gastric+Female, data=alcohol)
+M2<- lm(Metabol~Gastric+Male, data=alcohol)
+M3<- lm(Metabol~Gastric+Male+Female, data=alcohol)
+M4<- lm(Metabol~0+Gastric+Male+Female, data=alcohol)
+M1$coefficients;M2$coefficients
+1.946646-0.3292012
+```
+Esta es una manera de ver la diferencia. También si lo representamos gráficamente con un diagrama de cajas. Si construimos un modelo con la variable Sex, es el coeficiente de ésta la que nos muestra la diferencia entre ambos sexos:
+```{r}
+boxplot(Metabol~Sex, alcohol)
+M<- lm(Metabol~Gastric+Sex, data=alcohol);M$coefficients
+```
+
+#Mejor modelo según coeficiente de determinación: 
+M4, R-Squared=0.87, explica mayor porcentaje de varianza.
+```{r}
+sumary(M1);sumary(M2); sumary(M3); sumary(M4)
+```
+Mejor modelo según RMSE: Todos tienen el mismo valor.
+
+# Rango M3
+```{r}
+X<- model.matrix(~Gastric+Male+Female, data = alcohol)
+Y<- alcohol$Metabol
+qr(X)$rank
+```
+No podemos calcular la inversa  de X´X porque es una matriz singular. 
+El rango de x (matriz del modelo M3) es 3, ya que las variables Male y Female son linealmente dependientes.
+
+Utilizamos la inversa de Moore-Penrose:
+
+```{r}
+library(matlib)
+Xtxi<- Ginv (t(X)%*% X)
+coef<- Xtxi%*%t(X)%*%Y
+coef; M3$coefficients
+```
+Los coeficientes son los mismos. Se desestima la variable Female porque es una combinación lineal de Male.
+
+# Residuos: 
+También coinciden.
+```{r}
+M3sum<- summary(M3)
+```
+```{r}
+residuals<- Y-X %*% coef
+round(residuals-M3sum$residuals,4)
+```
+
+# Intervalos de confianza para en M2 al 95%
+Hipótesis nula: 2alpha-beta0-beta1=0
+```{r}
+M2$coefficients;  betas
+X2<- model.matrix(~Gastric+Male, alcohol)
+betas<- Ginv(t(X2) %*% X2) %*% t(X2) %*% Y
+```
+
+Residuos, sigma:
+```{r}
+res<- Y-X2 %*% betas
+n<- length(Y)
+r<- qr(X2)$rank
+sigma2<- sum(res^2)/(n-r)
+M2sum$sigma; sigma2
+```
+t Student:
+```{r}
+a <- c(2,-1,-1)
+numerador <- t(a) %*% betas
+denominador <- sqrt(sigma2 * t(a) %*% Ginv(t(X2) %*% X2) %*% a)
+t.est <- numerador/denominador
+p.value <- pt(abs(t.est), df = n-r, lower.tail = F) * 2
+c(t.est,p.value)
+```
+```{r}
+qt(0.975, n-r)
+summary(M2)
+(1.9655779-0.3292018)+c(-1,1)*2.04523*(0.7022+0.2674)
+```
+Como elintervalo contiene el 0, la hipótesis nula no sería rechazada al 5%
+
+# ??Otra manera de calcularlo:
+```{r}
+confint(M2, level = .95)
+```
+
+
+# Rectas de regresión:
+```{r}
+as.factor(Sex)
+female<- lm(Metabol~Gastric, data= alcohol, sub=Sex=="Female")
+male<- lm(Metabol~Gastric, data= alcohol, sub=Sex=="Male")
+sumfem<- summary(female)
+summal<- summary(male)
+```
+Contraste paralelismo:
+```{r}
+plot(Metabol~Gastric, pch=ifelse(Sex== "Female",1,16), data=alcohol)
+abline(male, lty=1)
+abline(female, lty=2)
+```
+Coeficientes:
+```{r}
+rectamale$
+male$coefficients; female$coefficients
+```
+Difieren en la pendiente y en el origen.
+Contraste de paralelismo. Suponiendo que las rectas estan a sociadas a un modelo lineal normal, planteamos la hipótesis nula de que los coeficientes de la variable Gastric (pendiente) son iguales en los 2 casos(hombre/mujer):
+```{r}
+n1 <- sum(Sex=="Male")
+n2 <- sum(Sex=="Female")
+y2 <- c(Gastric[Sex=="Male"],Gastric[Sex=="Female"])
+x2 <- matrix(numeric(4*(n1+n2)), ncol=4)
+x2[1:n1,1:2] <- model.matrix(male)
+x2[(n1+1):(n1+n2),3:4] <- model.matrix(female)
+general.lm <- lm(y2 ~ 0 + x2)
+head(model.matrix(general.lm));tail((model.matrix(general.lm))) 
+```
+
+```{r}
+x0 <- matrix(numeric(3*(n1+n2)), ncol=3)
+x0[ ,1] <- x2[ ,1]
+x0[ ,2] <- x2[ ,3]
+x0[ ,3] <- x2[ ,2] + x2[ ,4]
+h0.lm <- lm(y2 ~ 0 + x0)
+anova(h0.lm, general.lm)
+```
+Rechazamos la hipótesis del paralelismo.
+
+Análisis de la covarianza:
+Nos muestra la influencia del factor Sexo y la significación de la variable concomitante.
+
+```{r}
+g1<- lm(Metabol~Gastric*Sex, data= alcohol)
+g0<- lm(Metabol~Gastric+Sex, data = alcohol)
+anova(g0,g1)
+```
+
+
+# modelo completo
+```{r}
+MC<- lm(Metabol~Gastric+Male+Alcoholic+(Gastric*Male)+(Gastric*Alcoholic)+(Male*Alcoholic)+(Gastric*Male*Alcoholic), data=alcohol)
+MCsum<- summary(MC)
+M2sum<- summary(M2)
+MCsum$r.squared; M2sum$r.squared;MCsum$sigma; M2sum$sigma
+```
+El modelo completo es mejor, explica mayor porcentaje de varianza (mayor R-squared), y el valor de sigma es menor.
+```{r}
+anova(M2,MC)
+```
+
+
+## Problema 2
+```{r}
+str(senic)
+```
+
+# Matriz de correlaciones
+```{r}
+head(senic[,-c(1,8,9,12)])
+senic_cor<- cor(senic[,-c(1,8,9,12)])
+senic_cor
+library(corrplot)
+corrplot(senic_cor, method= "square",type="lower", diag=F, addCoef.col = "black",number.cex = 0.6)
+
+```
+# Boxplot
+```{r}
+boxplot(infrisk~medschl, senic)
+boxplot(infrisk~region, senic)
+```
+# ANOVA
+consideramos como hipótesis nula que el coeficiente de la variable medschl es igual a 0 (no influye en el riesgo de infección)
+
+```{r}
+lmod2<- lm(infrisk~stay+age+culratio+xratio+nbeds+region+census+nurses+service, data = senic)
+anova(lmod2,lmod)
+
+```
+No podemos rechazar la hipótesis nula (p-value= 0.08)
+
+Ahora, consideramos como hipótesis nula que el coeficiente de region es 0 (la región no influye en el riesgo de infección)
+```{r}
+lmod3<- lm(infrisk~stay+age+culratio+xratio+nbeds+medschl+census+nurses+service, data = senic)
+anova(lmod3, lmod)
+```
+En este caso si que rechazamos la hipótesis nula (p= 0.005324). La región influye en el valor de infrisk
+
+# Modelo
+```{r}
+lmod<- lm(infrisk~stay+age+culratio+xratio+nbeds+medschl+region+census+nurses+service, data=senic)
+summary(lmod)
+```
+Stay y culratio son la variables predictoras más significativas. La variable region también tiene un nivel de significación alto, pero es una variable categórica. La variable medschl sería la predictora con un 5% de significación, pero también es categórica.
+
+#Coeficientes:
+```{r}
+x<- model.matrix(~stay+age+culratio+xratio+nbeds+medschl+region+census+nurses+service,senic)
+y<- senic$infrisk
+xtxi <- solve((t(x)%*%x))
+xtxi%*%t(x)%*%y
+```
+Estos datos podrían no ser correctos cuando los predictores estan fuertemente correlacionados.Otra manera:
+```{r}
+solve(crossprod(x,x),crossprod(x,y))
+```
+```{r}
+lmod$coefficients
+```
+Son variables categóricas pero codificadas numéricamente, tanto medschl(1=si, 2=no), como region(1=NE, 2=NC, 3=S, 4=W). La variable medschl explica, por ejemplo, cuánto valdrá más la variable explicada para los no afiliados(el doble).
+
+# Modelo - variables con significación <5% (lmodb)
+Contraste frente al completo: hipótesis nula: los coeficientes de las variables con significación <5% son igual a 0.
+
+```{r}
+lmodb<- lm(infrisk~stay+culratio+xratio+medschl+region+service, data=senic)
+anova (lmodb, lmod)
+```
+De momento, No podemos rechazar la hipótesis nula. 
+
+# Modelo con stay, culratio y region (lmodc). Normalidad y heterocedasticidad. Gráficos.
+El leverage de una observación es equivalente a la distancia de Mahalanobis al centro de los datos.
+```{r}
+lmodc<- lm(infrisk~stay+culratio+region, data=senic)
+lmodcsum<-summary(lmodc)
+mean(lmodcsum$residuals); median(lmodcsum$residuals);lmodcsum$sigma
+```
+Observamos que el valor medio de los residuos es casi cero, como esperamos que sea.Esperamos que los residuos sean independientes de la variable explicativa y del modelo ajustado. De no ser así podríamos suponer que el modelo no está bien ajustado o que faltan predictores.
+
+Homocedasticidad: igualdad de la varianza de los errores.
+
+```{r}
+plot(fitted(lmodc),residuals(lmodc), xlab="predict values", ylab="residuals")
+abline(h=0)
+```
+```{r}
+sumary(lm(sqrt(abs(residuals(lmodc)))~fitted(lmodc)))
+```
+Tanto el gráfico como el valor de p nos indican que existe una varianza no constante. Podemos decir que hay heterocedasticidad.
+
+Normalidad:
+```{r}
+qqnorm(residuals(lmodc),ylab="Residuals")
+qqline(residuals(lmodc))
+```
+```{r}
+shapiro.test(residuals(lmodc))
+```
+Ni gráficamente ni por el test de contraste, vemos que la distribución de los residuos se aparte mucho de la normal.La hipótesis del test es que los residuos son normales, y por el valor de p no podemos rechazarla.
+
+Leverage:
+observaciones con el leverage más alto:
+```{r}
+hatv <- hatvalues(lmodc  )
+head(sort(hatv,decreasing=T)); sum(hatv)
+```
+Gráficamente:
+```{r}
+pc <- length(lmodc$coefficients)
+nc <- length(lmodc$fitted.values)
+leverage.mean <- pc/nc
+plot(hatv, type="h")
+abline(h=2*leverage.mean, col="red")
+```
+Comprobamos de ambas maneras que las observaciones con un leverage más alto son la 47, 8 y 112.
+
+
+Son outliers? consideramos el valor crítico de la t de Student y la corrección de Bonferroni. Nivel de significación 5%.
+```{r}
+stud<- rstandard(lmodc)
+head(sort(abs(stud), decreasing = T)); grlib
+grlib <- nc-pc-1
+which(abs(stud) > abs(qt(0.05/(2*nc),grlib)))
+```
+Con este último criterio, todos los residuos quedan por debajo del valor crítico, no hallamos ningún valor atípico. Queda la duda de si puede haber grupos de valores atípicos que no hayamos sabido encontrar.
+
+
+Observaciones influyentes:
+Calculamos la distancia de Cook como medida de la influencia de los puntos y la representamos contra los cuartiles de una distribución seminormal.
+
+```{r}
+cook <- cooks.distance(lmodc)
+halfnorm(cook,nlab=3,ylab="Distancia de Cook")
+```
+
+Criterio de selección:
+```{r}
+plot(lmodc, which=4)
+abline(h=4/((nc-pc-2)), col="red")
+```
+Vemos que las observaciones 8, 112 y 47 son las que tienen más influencia.
+
+# Intervalo 90%
+stay= 9.6, cultratio= 15.5, region=NE, lmodc
+```{r  }
+class(senic$region)
+p<- predict(lmodc, newdata = data.frame(stay= 9.6, culratio= 15.5, region=1), interval="confidence")
+p
+```
+NE está codificado como valor numérico (1).
+```{r}
+xc<- model.matrix(~stay+culratio+region,senic)
+yc<- senic$infrisk
+dim(xc)
+head(xc[,2:4])
+```
+1=NE, 2=NC, 3=S, 4=W
+
+# Predicción para un hospital NE
+```{r}
+xcne
+sumary(lmodc); betac; sigmac; lmodcsum$sigma; sec
+betac<- (solve(t(xc)%*%xc)) %*% t(xc)%*% yc
+sigmac<- sqrt(deviance(lmodc)/df.residual(lmodc))
+sec<- sqrt(diag(solve(t(xc)%*%xc)))*sigmac
+qt(0.975, 113-4)
+sec*1.981967*c(-1,1)+betac
+```
+# Recalcular estimación del modelo lmodc
+```{r}
+contr.sum(alcohol,contrasts = F)
+contr.poly(alcohol,contrasts = F)
+Region<- as.factor(senic$region)
+contrasts(Region)
+levels(Region)
+lmodc<- lm(infrisk~stay+culratio+region, data=senic)
+xcc<- model.matrix(~stay+culratio+region, data=senic)
+head(xcc)
+summary(lmodc)
+colnames(Region)
+```
+
+
+
+# Modelo modd, alpha=0.1
+```{r}
+modd<- lm(infrisk~stay+ age+ xratio+ medschl, data=senic)
+summodd<- summary(modd)
+
+
+```
+
+
